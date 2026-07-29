@@ -1,13 +1,17 @@
 # Smart Title Plugin
 
-> [!WARNING]
-> **Deprecated & unmaintained.** This plugin depends on `@tarquinen/opencode-auth-provider` (built for `ai@5`), which is incompatible with the `ai@6` SDK bundled by current OpenCode. Title generation crashes at runtime (`response.headers`) and the plugin no longer updates titles.
+> [!IMPORTANT]
+> **Troubleshooting: `undefined is not an object (evaluating 'response.headers')`**
 >
-> **Use OpenCode's built-in `title` agent instead** — set `agent.title.prompt` in your OpenCode config to control title style, e.g. to forbid markdown:
+> If title generation fails silently with this error in the logs, the selected model is likely routed through a **custom `baseURL` proxy** defined in your OpenCode config (e.g. `provider.anthropic.options.baseURL`). Requests through such a proxy can make `fetch` return `undefined`, which crashes the AI SDK before a title is produced.
+>
+> **Fix:** point the plugin at a model that does not use a custom `baseURL`, via `model` in `smart-title.jsonc`:
 >
 > ```jsonc
-> { "agent": { "title": { "prompt": "Generate a concise title. Plain text only: no markdown, no bold, no asterisks, no quotes." } } }
+> { "model": "opencode/north-mini-code-free" }
 > ```
+>
+> Without an explicit `model`, the plugin falls back to a provider that may use your proxied config.
 
 Auto-generates meaningful session titles for your OpenCode conversations using AI. Published as `@frankhommers/opencode-smart-title`.
 
