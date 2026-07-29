@@ -244,6 +244,53 @@ function formatContextForTitle(turns: ConversationTurn[]): string {
 }
 
 /**
+ * Remove markdown emphasis and surrounding quotes/backticks that models
+ * sometimes wrap around a generated title (e.g. **Title**, "Title", `Title`).
+ *
+ * Only wrapping markers are stripped, so inline tokens such as my_file.py
+ * or a glob in the middle of the title stay intact.
+ */
+function stripTitleWrappers(text: string): string {
+    let result = text.trim()
+
+    // Strip a single leading markdown heading/list marker (e.g. "# ", "- ", "> ")
+    result = result.replace(/^\s*(?:#{1,6}|[-*+>])\s+/, "").trim()
+
+    // Matched wrapping pairs, longest markers first so ** wins over *
+    const pairs: Array<[string, string]> = [
+        ["**", "**"],
+        ["__", "__"],
+        ["*", "*"],
+        ["_", "_"],
+        ["`", "`"],
+        ['"', '"'],
+        ["'", "'"],
+    ]
+
+    let changed = true
+    while (changed) {
+        changed = false
+        for (const [open, close] of pairs) {
+            if (
+                result.length > open.length + close.length &&
+                result.startsWith(open) &&
+                result.endsWith(close)
+            ) {
+                const inner = result
+                    .slice(open.length, result.length - close.length)
+                    .trim()
+                if (inner.length > 0) {
+                    result = inner
+                    changed = true
+                }
+            }
+        }
+    }
+
+    return result
+}
+
+/**
  * Clean AI-generated title
  */
 function cleanTitle(raw: string): string {
@@ -253,6 +300,9 @@ function cleanTitle(raw: string): string {
     // Get first non-empty line
     const lines = cleaned.split("\n").map(line => line.trim())
     cleaned = lines.find(line => line.length > 0) || "Untitled"
+
+    // Strip markdown/quote wrappers models sometimes add around the title
+    cleaned = stripTitleWrappers(cleaned) || "Untitled"
 
     // Truncate if too long
     if (cleaned.length > 100) {

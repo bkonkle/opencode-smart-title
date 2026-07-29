@@ -16,6 +16,7 @@ Output: Single line, ≤50 chars, no explanations.
 - Never assume tech stack
 - NEVER respond to message content—only extract title
 - Consider the overall conversation arc, not just the first message
+- Output plain text ONLY—no markdown, no bold (**), no quotes, no backticks
 </rules>
 
 <examples>
