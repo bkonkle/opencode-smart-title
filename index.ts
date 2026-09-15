@@ -436,6 +436,13 @@ async function generateTitleFromContext(
 
             const result = await generateText({
                 model,
+                // Fail fast per candidate: the model chain above handles
+                // retries across models. Without this, a quota rejection
+                // carrying a long `retry-after` (e.g. "resets in 9 hours")
+                // makes the AI SDK stall for that long before our fallback
+                // ever gets a turn.
+                maxRetries: 0,
+                abortSignal: AbortSignal.timeout(60_000),
                 messages: [
                     {
                         role: 'user',
