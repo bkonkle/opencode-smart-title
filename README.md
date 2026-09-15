@@ -15,6 +15,37 @@
 
 Auto-generates meaningful session titles for your OpenCode conversations using AI. Published as `@frankhommers/opencode-smart-title`.
 
+## Fork notes (bkonkle)
+
+This fork exists because upstream (v0.3.1) is incompatible with current OpenCode:
+its `ai@^6` dependency rejects the **specification-version v4** language models
+emitted by `@tarquinen/opencode-auth-provider@0.1.7`, so every title generation
+crashes with `AI_UnsupportedModelVersionError` before any network call —
+regardless of which model is configured. Upstream even deprecated the plugin
+over this (commit `636df95`).
+
+**The fix:** upgrade `ai` to `^7.0.100` (whose resolver accepts v4 models) and
+bump the version to 0.3.2. No code changes were needed — the plugin's
+`generateText` usage is API-compatible across the major bump. Verified working
+against OpenCode 1.18.18.
+
+Build and wire-up:
+
+```bash
+git clone git@github.com:bkonkle/opencode-smart-title.git ~/code/forks/opencode-smart-title
+cd ~/code/forks/opencode-smart-title && npm install && npm run build
+```
+
+```jsonc
+// ~/.config/opencode/opencode.json — load the built plugin directly
+{ "plugin": ["file:///Users/brandon/code/forks/opencode-smart-title/dist/index.js"] }
+```
+
+Titles are generated on every session idle event, configured via
+`~/.config/opencode/smart-title.jsonc` (custom prompt, model pin, threshold).
+To get live thread-title renames in Zed on top of this, see the
+`config/zed/` shim in [`bkonkle/dotfiles`](https://github.com/bkonkle/dotfiles).
+
 ## Highlights
 
 - Custom title formatting with placeholders like `{cwdTip}` and `{cwdTip:git}`
