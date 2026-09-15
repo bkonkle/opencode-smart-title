@@ -383,89 +383,99 @@ function applyTitleFormat(format: string, values: PlaceholderValues): string {
 
 /**
  * Generate title from conversation context using AI
+ *
+ * Tries each candidate model in order. Falls through to the next candidate on
+ * both model-resolution failures and generation-time failures (quota, rate
+ * limits, network), so a plan-limited primary doesn't silently kill titles.
  */
 async function generateTitleFromContext(
     context: string,
-    configModel: string | undefined,
+    configModels: string[],
     logger: Logger,
     client: OpenCodeClient,
     customPrompt?: string
 ): Promise<string | null> {
-    try {
-        logger.debug('title-generation', 'Selecting model', { configModel })
+    const candidates: (string | undefined)[] = configModels.length > 0 ? configModels : [undefined]
 
-        const { model, modelInfo, source, reason, failedModel } = await selectModel(
-            logger,
-            configModel
-        )
+    for (let index = 0; index < candidates.length; index++) {
+        const configModel = candidates[index]
+        const isLast = index === candidates.length - 1
 
-        logger.info('title-generation', 'Model selected', {
-            providerID: modelInfo.providerID,
-            modelID: modelInfo.modelID,
-            source,
-            reason
-        })
+        try {
+            if (candidates.length > 1) {
+                logger.info('title-generation', 'Selecting model', {
+                    configModel,
+                    candidate: index + 1,
+                    of: candidates.length
+                })
+            } else {
+                logger.debug('title-generation', 'Selecting model', { configModel })
+            }
 
-        // Show toast if we had to fallback from a configured model
-        if (failedModel) {
-            try {
-                await client.tui.showToast({
-                    body: {
-                        title: "Smart Title: Model fallback",
-                        message: `${failedModel.providerID}/${failedModel.modelID} failed\nUsing ${modelInfo.providerID}/${modelInfo.modelID}`,
-                        variant: "info",
-                        duration: 5000
+            const { model, modelInfo, source, reason } = await selectModel(
+                logger,
+                configModel
+            )
+
+            logger.info('title-generation', 'Model selected', {
+                providerID: modelInfo.providerID,
+                modelID: modelInfo.modelID,
+                source,
+                reason
+            })
+
+            const prompt = customPrompt || TITLE_PROMPT
+
+            logger.debug('title-generation', 'Generating title', {
+                contextLength: context.length,
+                promptSource: customPrompt ? 'custom' : 'built-in'
+            })
+
+            // Lazy import - only load the 2.8MB ai package when actually needed
+            const { generateText } = await import('ai')
+
+            const result = await generateText({
+                model,
+                messages: [
+                    {
+                        role: 'user',
+                        content: `${prompt}\n\n<conversation>\n${context}\n</conversation>\n\nOutput the title now:`
                     }
+                ]
+            })
+
+            const title = cleanTitle(result.text)
+
+            logger.info('title-generation', 'Title generated successfully', {
+                title,
+                titleLength: title.length,
+                rawLength: result.text.length,
+                providerID: modelInfo.providerID,
+                modelID: modelInfo.modelID
+            })
+
+            return title
+
+        } catch (error: any) {
+            logger.warn('title-generation', isLast
+                ? 'Final model candidate failed'
+                : 'Model candidate failed, trying next fallback', {
+                configModel: configModel ?? '(provider fallback)',
+                candidate: index + 1,
+                of: candidates.length,
+                error: error.message
+            })
+
+            if (isLast) {
+                logger.error('title-generation', 'All model candidates failed', {
+                    candidates: candidates.map(c => c ?? '(provider fallback)')
                 })
-                logger.info('title-generation', 'Toast notification shown for model fallback', {
-                    failedModel,
-                    selectedModel: modelInfo
-                })
-            } catch (toastError: any) {
-                logger.error('title-generation', 'Failed to show toast notification', {
-                    error: toastError.message
-                })
-                // Don't fail the whole operation if toast fails
+                return null
             }
         }
-
-        const prompt = customPrompt || TITLE_PROMPT
-
-        logger.debug('title-generation', 'Generating title', {
-            contextLength: context.length,
-            promptSource: customPrompt ? 'custom' : 'built-in'
-        })
-
-        // Lazy import - only load the 2.8MB ai package when actually needed
-        const { generateText } = await import('ai')
-
-        const result = await generateText({
-            model,
-            messages: [
-                {
-                    role: 'user',
-                    content: `${prompt}\n\n<conversation>\n${context}\n</conversation>\n\nOutput the title now:`
-                }
-            ]
-        })
-
-        const title = cleanTitle(result.text)
-
-        logger.info('title-generation', 'Title generated successfully', {
-            title,
-            titleLength: title.length,
-            rawLength: result.text.length
-        })
-
-        return title
-
-    } catch (error: any) {
-        logger.error('title-generation', 'Failed to generate title', {
-            error: error.message,
-            stack: error.stack
-        })
-        return null
     }
+
+    return null
 }
 
 /**
@@ -507,9 +517,14 @@ async function updateSessionTitle(
         const context = formatContextForTitle(turns)
 
         // Generate title from AI
+        const modelCandidates = config.models && config.models.length > 0
+            ? config.models
+            : config.model
+                ? [config.model]
+                : []
         const generatedTitle = await generateTitleFromContext(
             context,
-            config.model,
+            modelCandidates,
             logger,
             client,
             config.prompt
@@ -576,6 +591,7 @@ const SmartTitlePlugin: Plugin = async (ctx) => {
         enabled: config.enabled,
         debug: config.debug,
         model: config.model,
+        models: config.models,
         updateThreshold: config.updateThreshold,
         titleFormat: config.titleFormat,
         cwd,

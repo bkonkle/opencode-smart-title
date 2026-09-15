@@ -9,6 +9,13 @@ export interface PluginConfig {
     enabled: boolean
     debug: boolean
     model?: string
+    /**
+     * Ordered candidate models ("provider/model"). The first entry is the
+     * primary; later entries are tried in order when an earlier one fails
+     * to resolve OR fails at generation time (e.g. quota/rate limits).
+     * Takes precedence over `model` when non-empty.
+     */
+    models?: string[]
     prompt?: string
     updateThreshold: number
     excludeDirectories?: string[]
@@ -186,8 +193,22 @@ function normalizeExcludeDirectories(value: unknown): string[] | undefined {
         .filter(entry => entry.length > 0)
 }
 
+function normalizeModelList(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) {
+        return undefined
+    }
+
+    const models = value
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map(entry => entry.trim())
+        .filter(entry => entry.length > 0)
+
+    return models.length > 0 ? Array.from(new Set(models)) : undefined
+}
+
 function mergeConfig(base: PluginConfig, overlay: Partial<PluginConfig>): PluginConfig {
     const model = normalizeOptionalString(overlay.model)
+    const models = normalizeModelList(overlay.models)
     const prompt = normalizeOptionalString(overlay.prompt)
     const excludeDirectories = normalizeExcludeDirectories(overlay.excludeDirectories)
 
@@ -195,6 +216,7 @@ function mergeConfig(base: PluginConfig, overlay: Partial<PluginConfig>): Plugin
         enabled: normalizeBoolean(overlay.enabled, base.enabled),
         debug: normalizeBoolean(overlay.debug, base.debug),
         model: model ?? base.model,
+        models: models ?? base.models,
         prompt: prompt ?? base.prompt,
         updateThreshold: normalizePositiveInt(overlay.updateThreshold, base.updateThreshold),
         excludeDirectories: excludeDirectories ?? base.excludeDirectories,

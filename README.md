@@ -29,6 +29,15 @@ bump the version to 0.3.2. No code changes were needed — the plugin's
 `generateText` usage is API-compatible across the major bump. Verified working
 against OpenCode 1.18.18.
 
+Since 0.3.3, `smart-title.jsonc` also accepts an ordered `"models"` array.
+The first entry is primary; later entries are tried in order when an earlier
+model fails to resolve **or fails at generation time** (quota windows, rate
+limits) — e.g.:
+
+```jsonc
+{ "models": ["zai-coding-plan/glm-5.3-flash", "openai/gpt-5.6-luna"] }
+```
+
 Build and wire-up:
 
 ```bash
